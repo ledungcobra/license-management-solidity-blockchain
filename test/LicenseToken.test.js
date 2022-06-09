@@ -1,6 +1,17 @@
 const RootLicense = artifacts.require("./RootLicense.sol");
 const LicenseToken = artifacts.require("./LicenseToken.sol");
+const {
+    appDescription,
+    appImageUrl,
+    name,
+    periodPerToken,
+    price,
+    unit,
+    createDefaulAppLicense,
+    macAddr,
+} = require("./TestUtils");
 
+require("dotenv").config({ path: "../.env" });
 const getNewAppAddressAdded = async (instance) => {
     const apps = await instance.getApps();
     return apps[apps.length - 1];
@@ -10,20 +21,33 @@ let rootInstance;
 let deployApp;
 let appAddress;
 
-const name = "AppName";
-const appImageUrl = "AppImageUrl";
-const appDescription = "Description";
-const price = 1000;
-const periodPerToken = 10;
-const unit = 0;
+const sleep = (timeInMillis) => {
+    return new Promise((resolve, rej) => {
+        setTimeout(() => {
+            resolve();
+        }, timeInMillis);
+    });
+};
+
+const convertUnitToMilis = (unit) => {
+    switch (unit) {
+        case 0:
+            return 1000;
+        case 1:
+            return 24 * 60 * 60 * 1000;
+        case 2:
+            return 30 * 24 * 60 * 60 * 1000;
+        case 3:
+            return 365 * 24 * 60 * 60 * 1000;
+        default:
+            return 0;
+    }
+};
 
 contract("LicenseToken", (accounts) => {
     beforeEach(async () => {
         rootInstance = await RootLicense.deployed();
-        await rootInstance.createNewLicenseToken(name, appImageUrl, appDescription, price, periodPerToken, unit, {
-            from: accounts[0],
-            value: 300,
-        });
+        await createDefaulAppLicense(rootInstance, accounts[0], price);
         appAddress = await getNewAppAddressAdded(rootInstance);
         deployApp = await LicenseToken.at(appAddress);
     });
@@ -51,29 +75,112 @@ contract("LicenseToken", (accounts) => {
 
     it("It shouldn't interact with app when it is not activate", async () => {
         try {
-            await deployApp.purchaseLicense({ from: accounts[1], value: price });
+            await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
             assert.ok(false);
         } catch (e) {
             assert.ok(e);
         }
     });
 
-    // it("should bye a new license when the contract is activated", async () => {
-    //     await rootInstance.activate(appAddress, { from: accounts[0] });
-    //     await deployApp.purchaseLicense({ from: accounts[1], value: price });
-    //     const [_totalSupply, _totalPurchased, _totalPurchasedBy, _totalPurchasedByCount, _numberOfToken] = await Promise.all([
-    //         deployApp.totalSupply({ from: accounts[0] }),
-    //         deployApp.totalPurchased({ from: accounts[0] }),
-    //         deployApp.totalPurchasedBy({ from: accounts[0] }),
-    //         deployApp.totalPurchasedByCount({ from: accounts[0] }),
-    //         deployApp.balanceOf(accounts[0], { from: accounts[1] }),
-    //     ]);
+    it("should buy a new license when the contract was activated", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const numberOfTokenHolded = await deployApp.balanceOf(accounts[1], { from: accounts[1] });
+        assert.equal(numberOfTokenHolded, 1, "Number of token holded is not correct");
+    });
 
-    //     // One for newly purchased license one for the owner of contract;
-    //     assert.equal(_totalSupply, 2, "Total supply is not correct");
-    //     assert.equal(_totalPurchased, price, "Total purchased is not correct");
-    //     assert.equal(_totalPurchasedBy, accounts[1], "Total purchased by is not correct");
-    //     assert.equal(_totalPurchasedByCount, 1, "Total purchased by count is not correct");
-    //     assert.equal(_numberOfToken, 2, "Number of token is not correct");
-    // });
+    it("Balance of license token should increase when someone purchase a token license", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        const balanceBefore = await deployApp.balance({ from: accounts[1] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const balanceAfter = await deployApp.balance({ from: accounts[1] });
+        assert.ok(+balanceBefore < +balanceAfter);
+    });
+
+    it("Owner can set set licensePrice", async () => {
+        const newPrice = 10000;
+        await deployApp.setLicensePrice(newPrice, { from: accounts[0] });
+        const _newPrice = await deployApp.price({ from: accounts[0] });
+        assert.equal(newPrice, _newPrice, "License price is not correct");
+    });
+
+    it("Test timestamp when purchase new app", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        const currentTimeStamp = +new Date();
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const purchaseTimestamp = +(await deployApp.timeStampFirstBuy(accounts[1], { from: accounts[1] }));
+
+        assert.ok(
+            Math.abs(parseInt(purchaseTimestamp / 1000) - parseInt(currentTimeStamp / 1000)) <= process.env.TIME_DIFF_IN_SECOND,
+            "Invalid time stamp on purchase"
+        );
+    });
+
+    it("Buy a license an and then it will is still valid", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const expiredTimeInMillis = +(await deployApp.getExpiredTimestamp({ from: accounts[1] }));
+        assert.ok(typeof expiredTimeInMillis === "number", "Expired time is not correct");
+        const secondInvalidMillis =
+            periodPerToken * +(await deployApp.balanceOf(accounts[1], { from: accounts[1] })) * convertUnitToMilis(unit);
+        assert.ok(typeof secondInvalidMillis === "number", "secondInvalidMillis  is not correct");
+        await sleep(Math.round(secondInvalidMillis / 3));
+        const now = +new Date();
+
+        const isStillValid = Math.round(expiredTimeInMillis / 1000) > Math.round(now / 1000);
+        assert.ok(isStillValid);
+    });
+
+    it("Buy a license an and then it will be invalid after duration specified in contract", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const expiredTimeInMillis = +(await deployApp.getExpiredTimestamp({ from: accounts[1] }));
+        assert.ok(typeof expiredTimeInMillis === "number", "Expired time is not correct");
+        const secondInvalidMillis =
+            periodPerToken * +(await deployApp.balanceOf(accounts[1], { from: accounts[1] })) * convertUnitToMilis(unit);
+        assert.ok(typeof secondInvalidMillis === "number", "secondInvalidMillis  is not correct");
+        await sleep(secondInvalidMillis + 1000);
+        const now = +new Date();
+        const isNotValid = Math.round(expiredTimeInMillis / 1000) < Math.round(now / 1000);
+        assert.ok(isNotValid);
+    });
+
+    it("Should TimeStamp for license account buy update when purchase new license", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const expiredTimeInMillis = +(await deployApp.getExpiredTimestamp({ from: accounts[1] }));
+        const purchaseTimestamp = +(await deployApp.timeStampFirstBuy(accounts[1], { from: accounts[1] }));
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const purchaseTimestamp2 = +(await deployApp.timeStampFirstBuy(accounts[1], { from: accounts[1] }));
+        const expiredTimeInMillisAfterPurchase = +(await deployApp.getExpiredTimestamp({ from: accounts[1] }));
+        assert.ok(expiredTimeInMillis < expiredTimeInMillisAfterPurchase);
+        assert.ok(purchaseTimestamp === purchaseTimestamp2);
+        const tokenCount = +(await deployApp.balanceOf(accounts[1], { from: accounts[1] }));
+        assert.equal(tokenCount, 2);
+    });
+
+    it("Burn all token when client trigger buy new token and set new start timeStamp", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const oldPurchaseTimestamp = +(await deployApp.timeStampFirstBuy(accounts[1], { from: accounts[1] }));
+        const expiredTimeInMillis = +(await deployApp.getExpiredTimestamp({ from: accounts[1] }));
+        const oldTokens = +(await deployApp.balanceOf(accounts[1], { from: accounts[1] }));
+        assert.equal(oldTokens, 1);
+        const secondInvalidMillis =
+            periodPerToken * +(await deployApp.balanceOf(accounts[1], { from: accounts[1] })) * convertUnitToMilis(unit);
+        assert.ok(typeof secondInvalidMillis === "number", "secondInvalidMillis  is not correct");
+        await sleep(secondInvalidMillis + 1000);
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const newPurchaseTimestamp = +(await deployApp.timeStampFirstBuy(accounts[1], { from: accounts[1] }));
+        assert.ok(oldPurchaseTimestamp < newPurchaseTimestamp, "New purchased timestamp must set when old token is invalid");
+        const newTokens = +(await deployApp.balanceOf(accounts[1], { from: accounts[1] }));
+        assert.equal(newTokens, 1, "All previous tokens should be burn out and then a new token should be created");
+    });
+
+    it("Should get mac address from the license purchased", async () => {
+        await rootInstance.activate(appAddress, { from: accounts[0] });
+        await deployApp.purchaseLicense(accounts[1], macAddr, { from: accounts[1], value: price });
+        const _macAddr = await deployApp.addressToMacAddress(accounts[1], { from: accounts[1] });
+        assert.equal(macAddr, _macAddr);
+    });
 });
