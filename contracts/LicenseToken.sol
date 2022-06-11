@@ -9,6 +9,7 @@ contract LicenseToken is ERC20, Ownable {
     event LicensePurchased(address indexed buyer);
     event LicenseTokenPriceChange(uint newPrice, address licenseAddress);
     event LicenseTokenActivated(address licenseAddress);
+    event LicenseTokenDeActivated(address licenseAddress);
     event Log(address addr);
     
     modifier activated() {
@@ -80,10 +81,10 @@ contract LicenseToken is ERC20, Ownable {
         @param owner the owner of token be _mint 
         @param macAddress the address of computer client
      */
-    function purchaseLicense(address owner, string memory macAddress) public payable activated {
-        require(msg.value >= price, 'Price must be greater than license price');
+    function purchaseLicense(address owner, string memory macAddress, uint amount) public payable activated {
+        require(msg.value >= price * amount, 'The amount you sent is not enough to buy the tokens');
         require(msg.sender == owner, "You cannot purchase license for other address");
-        purchaseInternal(owner, macAddress);
+        purchaseInternal(owner, macAddress, amount);
     }
 
     /**
@@ -91,8 +92,8 @@ contract LicenseToken is ERC20, Ownable {
         @param owner the owner of the license token
         @param macAddress the address of computer client
      */
-    function purchaseLicenseInternal(address owner, string memory macAddress) public onlyOwner  {
-        purchaseInternal(owner, macAddress);
+    function purchaseLicenseInternal(address owner, string memory macAddress, uint amount) public onlyOwner activated  {
+        purchaseInternal(owner, macAddress,amount);
     }
 
     /**
@@ -100,10 +101,10 @@ contract LicenseToken is ERC20, Ownable {
         @param owner the owner of the license token
         @param macAddress the address of computer client
      */
-    function purchaseInternal(address owner, string memory macAddress) internal activated {
+    function purchaseInternal(address owner, string memory macAddress,uint amount) internal activated {
         updateTimeStampAndToken(owner);
         updateOwnerMacAddressInternal(owner, macAddress);
-        _mint(owner, 1);
+        _mint(owner, amount);
         emit LicensePurchased(owner);
     }
 
@@ -112,7 +113,7 @@ contract LicenseToken is ERC20, Ownable {
         @param owner the owner of the license token
         @param macAddress the address of computer client
      */
-    function updateOwnerMacAddressInternal(address owner, string memory macAddress) internal {
+    function updateOwnerMacAddressInternal(address owner, string memory macAddress) internal activated {
         require(owner != address(0), 'Invalid owner address');
         require(bytes(macAddress).length > 0, 'Mac address must be not empty');
         addressToMacAddress[owner] = macAddress;
@@ -125,7 +126,7 @@ contract LicenseToken is ERC20, Ownable {
         @param owner the owner of the license token
         @param macAddress the address of new computer
      */
-    function updateMacAddressByTheOwner(address owner, string memory macAddress) public {
+    function updateMacAddressByTheOwner(address owner, string memory macAddress) public activated {
         require(owner == msg.sender, 'Only owner can update mac address');
         updateOwnerMacAddressInternal(owner, macAddress);
     }
@@ -136,7 +137,7 @@ contract LicenseToken is ERC20, Ownable {
         and all tokens will be burned
         @param owner the owner of the license token
      */
-    function updateTimeStampAndToken(address owner) internal {
+    function updateTimeStampAndToken(address owner) internal activated {
         uint currentTimeMillis = getTimeNowInMillis();
         // If user already buy token, then update the timeStampFirstBuy
         if(timeStampFirstBuy[owner] != 0) {
@@ -182,7 +183,12 @@ contract LicenseToken is ERC20, Ownable {
     function setActive(bool _active) public  {
         require(msg.sender == ownerRoot, "Only root can set active");
         active = _active;
-        emit LicenseTokenActivated(address(this));
+        
+        if(_active) {
+            emit LicenseTokenActivated(address(this));
+        }else{
+            emit LicenseTokenDeActivated(address(this));
+        }
     }
 
     /**
@@ -196,8 +202,10 @@ contract LicenseToken is ERC20, Ownable {
         Get the expiration time of all tokens that user own
      */
     function getExpiredTimestamp () public view returns (uint256){
-        return timeStampFirstBuy[msg.sender] + balanceOf(msg.sender) * durationPerToken * unitToMilis();
+        address owner = msg.sender;
+        return timeStampFirstBuy[owner] + balanceOf(owner) * durationPerToken * unitToMilis();
     }
+
 
     /**
         The millisecond corresponding to the unit of time
