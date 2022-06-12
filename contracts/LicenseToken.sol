@@ -3,15 +3,17 @@ pragma solidity >=0.6.0;
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './RootLicense.sol';
+import './StringUtil.sol';
 
 contract LicenseToken is ERC20, Ownable {
 
-    event LicensePurchased(address indexed buyer);
+    event LicensePurchased(address indexed buyer,bytes32 secret);
+    event RestoreLicense(address owner, bytes32 secret);
     event LicenseTokenPriceChange(uint newPrice, address licenseAddress);
     event LicenseTokenActivated(address licenseAddress);
     event LicenseTokenDeActivated(address licenseAddress);
-    event Log(address addr);
-    
+    event BalanceChange(address appAddress, uint amount);
+
     modifier activated() {
         require(active, "The contract has not active yet");
         _;        
@@ -57,6 +59,8 @@ contract LicenseToken is ERC20, Ownable {
      */
     mapping(address => string) public addressToMacAddress;
 
+    string secret;
+
     constructor(string memory name, 
                 string memory symbol, 
                 string memory _description, 
@@ -64,7 +68,8 @@ contract LicenseToken is ERC20, Ownable {
                 address owner,
                 uint _priceInWei,
                 uint _durationPerToken, 
-                DurationUnit _unit) ERC20(name, symbol) public {
+                DurationUnit _unit, 
+                string memory _secret) ERC20(name, symbol) public {
         _mint(owner, 1);
         price = _priceInWei;
         active = false;
@@ -72,6 +77,7 @@ contract LicenseToken is ERC20, Ownable {
         appDescription = _description;
         durationPerToken = _durationPerToken;
         unit = _unit;        
+        secret = _secret;
         transferOwnership(owner);
     }
 
@@ -105,7 +111,11 @@ contract LicenseToken is ERC20, Ownable {
         updateTimeStampAndToken(owner);
         updateOwnerMacAddressInternal(owner, macAddress);
         _mint(owner, amount);
-        emit LicensePurchased(owner);
+        emit LicensePurchased(owner,buildSecret(owner));
+    }
+
+    function buildSecret(address owner) internal view returns (bytes32) {
+        return keccak256(bytes(StringUtil.strConcat(secret, StringUtil.addressToString(owner))));
     }
 
     /**
@@ -119,16 +129,87 @@ contract LicenseToken is ERC20, Ownable {
         addressToMacAddress[owner] = macAddress;
     }
 
+    /**
+        Get the timestamp that user first buy the token
+        @param newPrice is the new price of the license the new price must be greater than zero
+     */
+    function setLicensePrice(uint256 newPrice) public onlyOwner {
+        require(newPrice > 0, "New price must greater than zero");
+        price = newPrice;
+        emit LicenseTokenPriceChange(newPrice, address(this));
+    }
 
     /**
-        Update mac address by the owner of the license token this function 
-        can be used by client to update the license to use in another computer
-        @param owner the owner of the license token
-        @param macAddress the address of new computer
+        Withdraw all balance of that contract
      */
-    function updateMacAddressByTheOwner(address owner, string memory macAddress) public activated {
-        require(owner == msg.sender, 'Only owner can update mac address');
-        updateOwnerMacAddressInternal(owner, macAddress);
+    function withdraw() payable public  onlyOwner activated {
+        payable(owner()).transfer(address(this).balance);
+        emit BalanceChange(address(this).balance);
+    }
+
+    /**
+        Activate the license token by the owner of RootLicense contract
+     */
+    function setActive(bool _active) public  {
+        require(msg.sender == ownerRoot, "Only root can set active");
+        active = _active;
+        
+        if(_active) {
+            emit LicenseTokenActivated(address(this));
+        }else{
+            emit LicenseTokenDeActivated(address(this));
+        }
+    }
+
+    /**
+        Get the balance of the contract
+     */
+    function balance() public view returns(uint256) {
+        return address(this).balance;
+    }
+
+    function restoreLicense(string memory newMacAddress) public payable activated {
+        require(msg.value >= price / 2,"Get secret require at least half of the price");
+        require(bytes(newMacAddress).length > 0, 'Mac address must be not empty');
+        addressToMacAddress[msg.sender] = newMacAddress;
+        emit RestoreLicense(msg.sender, buildSecret(msg.sender));
+    }
+
+    /**
+        Get the expiration time of all tokens that user own
+     */
+    function getExpiredTimestamp () public view returns (uint256){
+        if(unit == DurationUnit.FOREVER){
+            return 2**63;
+        }
+        address owner = msg.sender;
+        return timeStampFirstBuy[owner] + balanceOf(owner) * durationPerToken * unitToMilis();
+    }
+
+
+    /**
+        The millisecond corresponding to the unit of time
+     */
+    function unitToMilis() internal view returns (uint256) {
+        if(unit == DurationUnit.DAY) {
+            return 24 * 60 * 60 * 1000;
+        } else if(unit == DurationUnit.MONTH) {
+            return 30 * 24 * 60 * 60 * 1000;
+        } else if(unit == DurationUnit.YEAR) {
+            return 365 * 24 * 60 * 60 * 1000;
+        }else if(unit == DurationUnit.SECOND){
+            return 1000;
+        }else if(unit == DurationUnit.FOREVER){
+            return 0;
+        }
+        return 0;
+    }
+
+    /**
+        Get the current time stamp of the block is mined in milliseconds
+     */
+    function getTimeNowInMillis() internal view returns (uint) {
+        return block.timestamp * 1000;
     }
 
     /**
@@ -153,75 +234,4 @@ contract LicenseToken is ERC20, Ownable {
         }
     }
 
-    /**
-        Get the current time stamp of the block is mined in milliseconds
-     */
-    function getTimeNowInMillis() internal view returns (uint) {
-        return block.timestamp * 1000;
-    }
-
-    /**
-        Get the timestamp that user first buy the token
-        @param newPrice is the new price of the license the new price must be greater than zero
-     */
-    function setLicensePrice(uint256 newPrice) public onlyOwner {
-        require(newPrice > 0, "New price must greater than zero");
-        price = newPrice;
-        emit LicenseTokenPriceChange(newPrice, address(this));
-    }
-
-    /**
-        Withdraw all balance of that contract
-     */
-    function withdraw() payable public  onlyOwner activated {
-        payable(owner()).transfer(address(this).balance);
-    }
-
-    /**
-        Activate the license token by the owner of RootLicense contract
-     */
-    function setActive(bool _active) public  {
-        require(msg.sender == ownerRoot, "Only root can set active");
-        active = _active;
-        
-        if(_active) {
-            emit LicenseTokenActivated(address(this));
-        }else{
-            emit LicenseTokenDeActivated(address(this));
-        }
-    }
-
-    /**
-        Get the balance of the contract
-     */
-    function balance() public view returns(uint256) {
-        return address(this).balance;
-    }
-
-    /**
-        Get the expiration time of all tokens that user own
-     */
-    function getExpiredTimestamp () public view returns (uint256){
-        address owner = msg.sender;
-        return timeStampFirstBuy[owner] + balanceOf(owner) * durationPerToken * unitToMilis();
-    }
-
-
-    /**
-        The millisecond corresponding to the unit of time
-     */
-    function unitToMilis() public view returns (uint256) {
-        if(unit == DurationUnit.DAY) {
-            return 24 * 60 * 60 * 1000;
-        } else if(unit == DurationUnit.MONTH) {
-            return 30 * 24 * 60 * 60 * 1000;
-        } else if(unit == DurationUnit.YEAR) {
-            return 365 * 24 * 60 * 60 * 1000;
-        }else if(unit == DurationUnit.SECOND){
-            return 1000;
-        }
-        return 0;
-    }
-
- 
 }

@@ -1,7 +1,8 @@
 pragma solidity >=0.6.0;
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './LicenseToken.sol';
-enum DurationUnit {SECOND, DAY, MONTH , YEAR}
+enum DurationUnit {SECOND, DAY, MONTH , YEAR, FOREVER}
+
 
 
 contract RootLicense  is Ownable {
@@ -41,7 +42,8 @@ contract RootLicense  is Ownable {
                                     string memory description,
                                     uint priceInWei, 
                                     uint durationPerToken, 
-                                    DurationUnit unit) public payable returns(address addressApp) {
+                                    DurationUnit unit, 
+                                    string memory secret) public payable returns(address addressApp) {
         
         require(msg.value >= licenseFee * 1 wei,"You have not enough funds");
         require(priceInWei >= 0 , "Price must be greater than 0 or equal to zero");
@@ -50,7 +52,8 @@ contract RootLicense  is Ownable {
                 unit == DurationUnit.DAY || 
                 unit == DurationUnit.MONTH ||
                 unit == DurationUnit.YEAR, "Invalid duration unit");
-        
+        require(bytes(secret).length > 0, "The secret must be not empty");
+
         LicenseToken  token = new LicenseToken(appName, 
                                         appImageUrl, 
                                         description, 
@@ -58,8 +61,8 @@ contract RootLicense  is Ownable {
                                         msg.sender,
                                         priceInWei, 
                                         durationPerToken, 
-                                        unit);
-
+                                        unit,
+                                        secret);
         apps.push(token);
         emit OnAddedNewApp(address(token));
         emit OnBalanceChanged(address(this), balance());
