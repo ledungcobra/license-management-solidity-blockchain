@@ -200,7 +200,7 @@ contract LicenseToken is ERC20, Ownable {
         }else if(unit == DurationUnit.SECOND){
             return 1000;
         }else if(unit == DurationUnit.FOREVER){
-            return 0;
+            return 2**63;
         }
         return 0;
     }
