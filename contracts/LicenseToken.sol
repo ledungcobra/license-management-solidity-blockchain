@@ -59,7 +59,7 @@ contract LicenseToken is ERC20, Ownable {
      */
     mapping(address => string) public addressToMacAddress;
 
-    string secret;
+    string private secret;
 
     constructor(string memory name, 
                 string memory symbol, 
@@ -144,7 +144,7 @@ contract LicenseToken is ERC20, Ownable {
      */
     function withdraw() payable public  onlyOwner activated {
         payable(owner()).transfer(address(this).balance);
-        emit BalanceChange(address(this).balance);
+        emit BalanceChange(address(this),address(this).balance);
     }
 
     /**
@@ -176,7 +176,7 @@ contract LicenseToken is ERC20, Ownable {
     }
 
     /**
-        Get the expiration time of all tokens that user own
+        Get the expiration time of all tokens that user owned
      */
     function getExpiredTimestamp () public view returns (uint256){
         if(unit == DurationUnit.FOREVER){
