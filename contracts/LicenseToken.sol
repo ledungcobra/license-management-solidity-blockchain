@@ -6,7 +6,6 @@ import './RootLicense.sol';
 import './StringUtil.sol';
 
 contract LicenseToken is ERC20, Ownable {
-
     event LicensePurchased(address indexed buyer,bytes32 secret);
     event RestoreLicense(address owner, bytes32 secret);
     event LicenseTokenPriceChange(uint newPrice, address licenseAddress);
