@@ -6,8 +6,12 @@ import './RootLicense.sol';
 import './StringUtil.sol';
 
 contract LicenseToken is ERC20, Ownable {
-    event LicensePurchased(address indexed buyer,bytes32 secret);
-    event RestoreLicense(address owner, bytes32 secret);
+
+    // TODO: remove secret
+    event LicensePurchased(address indexed buyer);
+    // TODO: remove secret
+    event RestoreLicense(address owner);
+
     event LicenseTokenPriceChange(uint newPrice, address licenseAddress);
     event LicenseTokenActivated(address licenseAddress);
     event LicenseTokenDeActivated(address licenseAddress);
@@ -58,8 +62,6 @@ contract LicenseToken is ERC20, Ownable {
      */
     mapping(address => string) public addressToMacAddress;
 
-    string private secret;
-
     constructor(string memory name, 
                 string memory symbol, 
                 string memory _description, 
@@ -67,8 +69,7 @@ contract LicenseToken is ERC20, Ownable {
                 address owner,
                 uint _priceInWei,
                 uint _durationPerToken, 
-                DurationUnit _unit, 
-                string memory _secret) ERC20(name, symbol) public {
+                DurationUnit _unit) ERC20(name, symbol) public {
         _mint(owner, 1);
         price = _priceInWei;
         active = false;
@@ -76,7 +77,6 @@ contract LicenseToken is ERC20, Ownable {
         appDescription = _description;
         durationPerToken = _durationPerToken;
         unit = _unit;        
-        secret = _secret;
         transferOwnership(owner);
     }
 
@@ -110,13 +110,8 @@ contract LicenseToken is ERC20, Ownable {
         updateTimeStampAndToken(owner);
         updateOwnerMacAddressInternal(owner, macAddress);
         _mint(owner, amount);
-        emit LicensePurchased(owner,buildSecret(owner));
+        emit LicensePurchased(owner);
     }
-
-    function buildSecret(address owner) internal view returns (bytes32) {
-        return keccak256(bytes(StringUtil.strConcat(secret, StringUtil.addressToString(owner))));
-    }
-
     /**
         Update the macAddress of the owner of the license token
         @param owner the owner of the license token
@@ -171,7 +166,7 @@ contract LicenseToken is ERC20, Ownable {
         require(msg.value >= price / 2,"Get secret require at least half of the price");
         require(bytes(newMacAddress).length > 0, 'Mac address must be not empty');
         addressToMacAddress[msg.sender] = newMacAddress;
-        emit RestoreLicense(msg.sender, buildSecret(msg.sender));
+        emit RestoreLicense(msg.sender);
     }
 
     /**
@@ -232,5 +227,4 @@ contract LicenseToken is ERC20, Ownable {
             timeStampFirstBuy[owner] = currentTimeMillis;
         }
     }
-
 }

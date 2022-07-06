@@ -27,7 +27,7 @@ module.exports = {
                     MetaMaskAccountIndex
                 );
             },
-            network_id: "5777"
+            network_id: 5777
         }
     },
     compilers: {

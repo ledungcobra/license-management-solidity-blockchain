@@ -8,7 +8,7 @@
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "start": "truffle migrate --reset --network ganache ;copy ../web/src/contracts/* ../desktop/src/contracts"
+        "start": "truffle migrate --reset --network ganache"
     },
     "keywords": [],
     "author": "",

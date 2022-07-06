@@ -7,7 +7,7 @@ enum DurationUnit {SECOND, DAY, MONTH , YEAR, FOREVER}
 
 contract RootLicense  is Ownable {
 
-    event OnAddedNewApp(address appAddress);
+    event OnAddedNewApp(address appAddress, address owner);
     event OnAppActivated(address appAddress);
     event OnAppDeactivated(address appAddress);
     event OnLicenseFeeChanged(uint amount);
@@ -42,8 +42,7 @@ contract RootLicense  is Ownable {
                                     string memory description,
                                     uint priceInWei, 
                                     uint durationPerToken, 
-                                    DurationUnit unit, 
-                                    string memory secret) public payable returns(address addressApp) {
+                                    DurationUnit unit) public payable returns(address addressApp) {
         
         require(msg.value >= licenseFee * 1 wei,"You have not enough funds");
         require(priceInWei >= 0 , "Price must be greater than 0 or equal to zero");
@@ -52,7 +51,6 @@ contract RootLicense  is Ownable {
                 unit == DurationUnit.DAY || 
                 unit == DurationUnit.MONTH ||
                 unit == DurationUnit.YEAR, "Invalid duration unit");
-        require(bytes(secret).length > 0, "The secret must be not empty");
 
         LicenseToken  token = new LicenseToken(appName, 
                                         appImageUrl, 
@@ -61,10 +59,10 @@ contract RootLicense  is Ownable {
                                         msg.sender,
                                         priceInWei, 
                                         durationPerToken, 
-                                        unit,
-                                        secret);
+                                        unit
+                                        );
         apps.push(token);
-        emit OnAddedNewApp(address(token));
+        emit OnAddedNewApp(address(token), msg.sender);
         emit OnBalanceChanged(address(this), balance());
         return address(token);
     }

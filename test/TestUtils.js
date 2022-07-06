@@ -13,7 +13,7 @@ const getNewAppAddressAdded = async (instance) => {
 };
 
 const createDefaulAppLicense = async (instance, account, value) => {
-    return await instance.createNewLicenseToken(name, appImageUrl, appDescription, price, periodPerToken, unit,secret, {
+    return await instance.createNewLicenseToken(name, appImageUrl, appDescription, price, periodPerToken, unit, {
         from: account,
         value,
     });
