@@ -37,6 +37,10 @@
 ## Then run npm start to boot up venderjs
 
 ![Start venderjs](images/11.png)
+
 # Venderjs booted
+
 ![Venderjs booted](images/12.png)
 
+Link video setup and run application
+[Video Setup app](https://www.youtube.com/watch?v=t1n_YJIi4KM)
